@@ -5,70 +5,52 @@ const fs = require('fs')
 const webpack = require('webpack')
 const MiniCssExtractPlugin = require('mini-css-extract-plugin')
 const CopyWebpackPlugin = require('copy-webpack-plugin')
-const HardSourceWebpackPlugin = require('hard-source-webpack-plugin')
-const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin')
+const StringReplacePlugin = require('string-replace-webpack-plugin')
+const CssMinimizerPlugin = require('css-minimizer-webpack-plugin')
 const ESLintPlugin = require('eslint-webpack-plugin')
+const TerserJSPlugin = require('terser-webpack-plugin')
 const { CleanWebpackPlugin } = require('clean-webpack-plugin')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 
-const CLIENT_PORT = 8087
-const APP_VERSION = 'development'
+const date = +new Date()
+const APP_VERSION = Buffer.from((date - (date % (1000 * 60 * 30))).toString())
+  .toString('base64')
+  .replace(/==/, '')
+
 const config = {
-  stats: {
-    modules: false
-  },
   optimization: {
-    moduleIds: 'named',
-    chunkIds: 'named'
+    minimize: true,
+    minimizer: [new TerserJSPlugin({ parallel: true })]
   },
-  devtool: 'eval-source-map',
-  entry: ['./main.jsx'],
+  entry: {
+    main: './main.jsx'
+  },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
+
     alias: {
-      d3: 'd3/index.js',
-      'react-dom': '@hot-loader/react-dom'
+      d3: 'd3/index.js'
     }
   },
   output: {
     filename: 'js/[name].bundle.js?v=COMMITHASH1',
     path: resolve(__dirname, 'dist'),
     publicPath: '/',
-    chunkFilename: 'js/[name].[contenthash].js'
+    chunkFilename: 'js/[name].js?id=[chunkhash]'
   },
-  mode: 'development',
+  mode: 'production',
   context: resolve(__dirname, 'client'),
-  devServer: {
-    hotOnly: true,
-    contentBase: resolve(__dirname, 'dist'),
-    watchContentBase: true,
-    host: '0.0.0.0',
-    port: CLIENT_PORT,
-    useLocalIp: true,
-    historyApiFallback: true,
-    overlay: {
-      warnings: false,
-      errors: true
-    },
-    proxy: [
-      {
-        context: ['/api', '/auth', '/ws', '/favicon.ico'],
-        target: 'http://0.0.0.0:8090',
-        secure: false,
-        changeOrigin: true,
-        ws: process.env.ENABLE_SOCKETS === 'true'
-      }
-    ]
+  devtool: false,
+  performance: {
+    hints: 'warning',
+    maxEntrypointSize: 512000,
+    maxAssetSize: 512000
   },
   module: {
     rules: [
       {
         test: /\.js|jsx$/,
-        use: [
-          {
-            loader: require.resolve('babel-loader')
-          }
-        ],
+        use: 'babel-loader',
         exclude: /node_modules/
       },
       {
@@ -100,6 +82,7 @@ const config = {
               publicPath: '../'
             }
           },
+
           { loader: 'css-loader', options: { sourceMap: true } },
           {
             loader: 'postcss-loader'
@@ -168,11 +151,7 @@ const config = {
       extensions: ['js', 'jsx'],
       exclude: 'node_modules'
     }),
-    new MiniCssExtractPlugin({
-      filename: 'css/main.css',
-      chunkFilename: 'css/[id].css',
-      ignoreOrder: false
-    }),
+    new StringReplacePlugin(),
     new CopyWebpackPlugin(
       {
         patterns: [
@@ -204,21 +183,20 @@ const config = {
         ]
       },
       { parallel: 100 }
-    ),
-    new ReactRefreshWebpackPlugin({
-      overlay: {
-        sockIntegration: 'wds'
-      }
-    }), // new HardSourceWebpackPlugin(),
-    new webpack.HotModuleReplacementPlugin(),
+    ), // `...`,
+    new CssMinimizerPlugin({ parallel: 4 }),
+    new MiniCssExtractPlugin({
+      filename: 'css/[name].css',
+      chunkFilename: 'css/[id].css',
+      ignoreOrder: false
+    }),
     new CleanWebpackPlugin(),
     new HtmlWebpackPlugin({ template: 'index.html' }),
     new webpack.DefinePlugin(
       Object.keys(process.env).reduce(
         (res, key) => ({ ...res, [key]: JSON.stringify(process.env[key]) }),
         {
-          APP_VERSION: JSON.stringify(APP_VERSION),
-          'windows.process': { cwd: () => '' }
+          APP_VERSION: JSON.stringify(APP_VERSION)
         }
       )
     )
